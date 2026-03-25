@@ -1,13 +1,15 @@
 import os
+import threading
+import asyncio
 from pyrogram import Client, filters
 from flask import Flask, Response
 
+# 🔑 ENV VARIABLES
 API_ID = int(os.environ.get("API_ID"))
 API_HASH = os.environ.get("API_HASH")
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
-BOT_USERNAME = None
-
+# 🤖 Telegram Bot
 app = Client(
     "stream_bot",
     api_id=API_ID,
@@ -15,18 +17,15 @@ app = Client(
     bot_token=BOT_TOKEN
 )
 
+# 🌐 Flask App
 web = Flask(__name__)
 
+# 🗂 Store file IDs temporarily
 FILES = {}
 
-# 📩 Receive file
+# 📩 Handle incoming files
 @app.on_message(filters.document | filters.video | filters.audio)
 async def handle_file(client, message):
-    global BOT_USERNAME
-    
-    if not BOT_USERNAME:
-        me = await client.get_me()
-        BOT_USERNAME = me.username
 
     file_id = (
         message.document.file_id if message.document else
@@ -37,9 +36,12 @@ async def handle_file(client, message):
     unique_id = str(message.id)
     FILES[unique_id] = file_id
 
-    link = f"https://{os.environ.get('RAILWAY_PUBLIC_DOMAIN')}/file/{unique_id}"
+    # ✅ Correct Railway domain
+    domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN")
 
-    await message.reply_text(f"🔗 Download:\n{link}")
+    link = f"https://{domain}/file/{unique_id}"
+
+    await message.reply_text(f"📥 Direct Download Link:\n{link}")
 
 
 # 🌐 Stream file to browser
@@ -48,22 +50,27 @@ def stream_file(file_id):
     file_id_real = FILES.get(file_id)
 
     if not file_id_real:
-        return "File not found"
+        return "❌ File not found"
 
-    def generate():
-        for chunk in app.stream_media(file_id_real):
+    async def generate():
+        async for chunk in app.stream_media(file_id_real):
             yield chunk
 
     return Response(generate(), content_type="application/octet-stream")
 
 
-# 🚀 Run both
+# 🚀 Run both Flask + Bot
 def run():
-    import threading
     port = int(os.environ.get("PORT", 8080))
-    
-    threading.Thread(target=lambda: web.run(host="0.0.0.0", port=port)).start()
+
+    # Run Flask in separate thread
+    threading.Thread(
+        target=lambda: web.run(host="0.0.0.0", port=port)
+    ).start()
+
+    # Run Telegram bot
     app.run()
+
 
 if __name__ == "__main__":
     run()
