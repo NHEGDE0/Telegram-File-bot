@@ -4,12 +4,12 @@ import asyncio
 from pyrogram import Client, filters
 from flask import Flask, Response
 
-# 🔑 ENV VARIABLES
+# 🔑 ENV
 API_ID = int(os.environ.get("API_ID"))
 API_HASH = os.environ.get("API_HASH")
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
-# 🤖 Telegram Bot
+# 🤖 Telegram bot
 app = Client(
     "stream_bot",
     api_id=API_ID,
@@ -17,13 +17,13 @@ app = Client(
     bot_token=BOT_TOKEN
 )
 
-# 🌐 Flask App
+# 🌐 Flask
 web = Flask(__name__)
 
-# 🗂 Store file IDs temporarily
+# 🗂 Memory storage
 FILES = {}
 
-# 📩 Handle incoming files
+# 📩 Receive file
 @app.on_message(filters.document | filters.video | filters.audio)
 async def handle_file(client, message):
 
@@ -36,7 +36,6 @@ async def handle_file(client, message):
     unique_id = str(message.id)
     FILES[unique_id] = file_id
 
-    # ✅ Correct Railway domain
     domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN")
 
     link = f"https://{domain}/file/{unique_id}"
@@ -44,7 +43,7 @@ async def handle_file(client, message):
     await message.reply_text(f"📥 Direct Download Link:\n{link}")
 
 
-# 🌐 Stream file to browser
+# 🌐 STREAM FIXED (IMPORTANT)
 @web.route("/file/<file_id>")
 def stream_file(file_id):
     file_id_real = FILES.get(file_id)
@@ -52,23 +51,33 @@ def stream_file(file_id):
     if not file_id_real:
         return "❌ File not found"
 
-    async def generate():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    async def streamer():
         async for chunk in app.stream_media(file_id_real):
             yield chunk
+
+    def generate():
+        gen = streamer()
+        try:
+            while True:
+                chunk = loop.run_until_complete(gen.anext())
+                yield chunk
+        except StopAsyncIteration:
+            pass
 
     return Response(generate(), content_type="application/octet-stream")
 
 
-# 🚀 Run both Flask + Bot
+# 🚀 Run both
 def run():
     port = int(os.environ.get("PORT", 8080))
 
-    # Run Flask in separate thread
     threading.Thread(
         target=lambda: web.run(host="0.0.0.0", port=port)
     ).start()
 
-    # Run Telegram bot
     app.run()
 
 
