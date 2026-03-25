@@ -1,15 +1,15 @@
 import os
 import threading
-import asyncio
 from pyrogram import Client, filters
-from flask import Flask, Response
+from flask import Flask, send_file
+import tempfile
 
 # 🔑 ENV
 API_ID = int(os.environ.get("API_ID"))
 API_HASH = os.environ.get("API_HASH")
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
-# 🤖 Telegram bot
+# 🤖 Bot
 app = Client(
     "stream_bot",
     api_id=API_ID,
@@ -20,10 +20,9 @@ app = Client(
 # 🌐 Flask
 web = Flask(__name__)
 
-# 🗂 Memory storage
 FILES = {}
 
-# 📩 Receive file
+# 📩 Handle file
 @app.on_message(filters.document | filters.video | filters.audio)
 async def handle_file(client, message):
 
@@ -40,37 +39,27 @@ async def handle_file(client, message):
 
     link = f"https://{domain}/file/{unique_id}"
 
-    await message.reply_text(f"📥 Direct Download Link:\n{link}")
+    await message.reply_text(f"📥 Direct Download:\n{link}")
 
 
-# 🌐 STREAM FIXED (IMPORTANT)
+# 🌐 Download + send file
 @web.route("/file/<file_id>")
-def stream_file(file_id):
+def get_file(file_id):
     file_id_real = FILES.get(file_id)
 
     if not file_id_real:
         return "❌ File not found"
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    # create temp file
+    temp = tempfile.NamedTemporaryFile(delete=False)
 
-    async def streamer():
-        async for chunk in app.stream_media(file_id_real):
-            yield chunk
+    # download file
+    app.download_media(file_id_real, file_name=temp.name)
 
-    def generate():
-        gen = streamer()
-        try:
-            while True:
-                chunk = loop.run_until_complete(gen.anext())
-                yield chunk
-        except StopAsyncIteration:
-            pass
-
-    return Response(generate(), content_type="application/octet-stream")
+    return send_file(temp.name, as_attachment=True)
 
 
-# 🚀 Run both
+# 🚀 Run
 def run():
     port = int(os.environ.get("PORT", 8080))
 
