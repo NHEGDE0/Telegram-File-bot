@@ -15,7 +15,7 @@ app = Client(
     bot_token=BOT_TOKEN
 )
 
-web = Flask(name)
+web = Flask(__name__)
 
 FILES = {}
 
@@ -65,5 +65,5 @@ def run():
     threading.Thread(target=lambda: web.run(host="0.0.0.0", port=port)).start()
     app.run()
 
-if name == "main":
+if __name__ == "__main__":
     run()
