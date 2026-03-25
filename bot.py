@@ -37,7 +37,7 @@ async def handle_file(client, message):
     unique_id = str(message.id)
     FILES[unique_id] = file_id
 
-    link = f"https://{os.environ.get('RAILWAY_STATIC_URL')}/file/{unique_id}"
+    link = f"https://{os.environ.get('RAILWAY_PUBLIC_DOMAIN')}/file/{unique_id}"
 
     await message.reply_text(f"🔗 Download:\n{link}")
 
