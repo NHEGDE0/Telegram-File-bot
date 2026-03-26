@@ -2,14 +2,23 @@ import os
 import threading
 from flask import Flask, send_file
 from pyrogram import Client, filters
+import time
 
+# 🔑 Telegram credentials
 API_ID = int(os.environ.get("API_ID"))
 API_HASH = os.environ.get("API_HASH")
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
+# 🌐 Your Railway URL (FIXED)
+BASE_URL = "https://telegram-bot-production-31b5.up.railway.app"
+
+# Flask app
 app = Flask(__name__)
+
+# Temporary storage
 FILES = {}
 
+# Telegram bot
 bot = Client(
     "bot",
     api_id=API_ID,
@@ -25,39 +34,45 @@ async def handle_file(client, message):
     file_id = file.file_id
     unique_id = file.file_unique_id
 
-    # store file id
-    FILES[unique_id] = file_id
+    # Store file info
+    FILES[unique_id] = {
+        "file_id": file_id,
+        "time": time.time()
+    }
 
-    # create link
-    base_url = os.environ.get("RAILWAY_STATIC_URL")
-    link = f"{base_url}/file/{unique_id}"
+    # Generate link
+    link = f"{BASE_URL}/file/{unique_id}"
 
     await message.reply_text(f"📥 Download:\n{link}")
-
 
 # 🌐 Serve file
 @app.route("/file/<file_id>")
 def get_file(file_id):
-    file_id_real = FILES.get(file_id)
+    data = FILES.get(file_id)
 
-    if not file_id_real:
-        return "File not found"
+    if not data:
+        return "❌ File expired or not found"
+
+    file_id_real = data["file_id"]
 
     path = f"{file_id}.bin"
 
-    bot.download_media(file_id_real, file_name=path)
+    try:
+        bot.download_media(file_id_real, file_name=path)
+        return send_file(path, as_attachment=True)
+    except Exception as e:
+        return f"Error: {str(e)}"
 
-    return send_file(path, as_attachment=True)
-
-
-# 🚀 Run both
+# 🚀 Run bot
 def run_bot():
     bot.run()
 
+# 🌐 Run web server
 def run_web():
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
 
+# 🔥 Start both
 if __name__ == "__main__":
     threading.Thread(target=run_bot).start()
     run_web()
