@@ -1,80 +1,58 @@
 import os
-import time
 import asyncio
-from flask import Flask, send_file, request
+from flask import Flask, request, send_file
 from telegram import Update
-from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, filters
+from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 app = Flask(__name__)
-FILES = {}
 
-BASE_URL = "https://telegram-bot-production-31b5.up.railway.app"
-
-# Create application
+# Create bot app (FIXED)
 application = ApplicationBuilder().token(BOT_TOKEN).build()
 
-# START command
-async def start(update, context):
-    await update.message.reply_text("✅ Bot is working! Send me a file.")
+# Store files temporarily
+FILES = {}
 
-# File handler
-async def handle_file(update, context):
+# Handle file
+async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     file = update.message.document or update.message.video or update.message.audio
 
     if not file:
+        await update.message.reply_text("Send a file")
         return
 
     file_id = file.file_id
-    unique_id = str(int(time.time()))
+    file_name = file.file_name or "file"
 
-    FILES[unique_id] = file_id
+    FILES[file_id] = file_name
 
-    link = f"{BASE_URL}/file/{unique_id}"
+    link = f"https://telegram-bot-production-31b5.up.railway.app/file/{file_id}"
 
-    await update.message.reply_text(f"📥 Download:\n{link}")
+    await update.message.reply_text(f"Download link:\n{link}")
 
-# Add handlers
-application.add_handler(CommandHandler("start", start))
 application.add_handler(MessageHandler(filters.ALL, handle_file))
 
 # Download route
 @app.route("/file/<file_id>")
-def download(file_id):
-    if file_id not in FILES:
-        return "❌ File not found"
-
-    file_id_real = FILES[file_id]
-
-    file = application.bot.get_file(file_id_real)
+async def get_file(file_id):
+    file = await application.bot.get_file(file_id)
     path = f"{file_id}.bin"
-    file.download_to_drive(path)
+
+    await file.download_to_drive(path)
 
     return send_file(path, as_attachment=True)
 
+# Webhook route
 @app.route("/", methods=["POST"])
 def webhook():
-    try:
-        data = request.get_json(force=True)
-        update = Update.de_json(data, application.bot)
+    data = request.get_json(force=True)
+    update = Update.de_json(data, application.bot)
 
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(application.process_update(update))
+    asyncio.run(application.process_update(update))  # FIXED
 
-        return "OK"
-    except Exception as e:
-        print("ERROR:", e)
-        return "ERROR"
+    return "OK"
 
-# Set webhook
-@app.route("/setwebhook")
-def set_webhook():
-    url = f"{BASE_URL}/"
-    application.bot.set_webhook(url)
-    return "Webhook set"
-
-# Run server
+# Start server
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
