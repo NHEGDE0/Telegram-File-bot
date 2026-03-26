@@ -1,80 +1,69 @@
 import os
 import time
-import asyncio
-import threading
-from flask import Flask, send_file
-from pyrogram import Client, filters, idle
+from flask import Flask, send_file, request
+from telegram import Update
+from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, filters, ContextTypes
 
-# 🔑 Telegram credentials
-API_ID = int(os.environ.get("API_ID"))
-API_HASH = os.environ.get("API_HASH")
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
-# 🌐 Your Railway URL (IMPORTANT)
-BASE_URL = "https://telegram-bot-production-31b5.up.railway.app"
-
-# Flask app
 app = Flask(__name__)
-
-# Temporary storage
 FILES = {}
 
-# ✅ FIXED BOT (in_memory avoids session issues)
-bot = Client(
-    "mybot",
-    api_id=API_ID,
-    api_hash=API_HASH,
-    bot_token=BOT_TOKEN,
-    in_memory=True
-)
+# 🌐 Your Railway URL
+BASE_URL = "https://telegram-bot-production-31b5.up.railway.app"
 
-# 📥 Receive file
-@bot.on_message(filters.document | filters.video | filters.audio)
-async def handle_file(client, message):
-    print("File received")  # DEBUG
+# 🚀 Telegram app
+application = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    file = message.document or message.video or message.audio
+# ✅ START COMMAND
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("✅ Bot is working! Send me a file.")
+
+# 📥 HANDLE FILE
+async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    file = update.message.document or update.message.video or update.message.audio
+
+    if not file:
+        return
+
     file_id = file.file_id
-    unique_id = file.file_unique_id
+    unique_id = str(time.time())
 
-    FILES[unique_id] = {
-        "file_id": file_id,
-        "time": time.time()
-    }
+    FILES[unique_id] = file_id
 
     link = f"{BASE_URL}/file/{unique_id}"
 
-    await message.reply_text(f"📥 Download:\n{link}")
+    await update.message.reply_text(f"📥 Download:\n{link}")
 
-# 🌐 Serve file
+# 🌐 DOWNLOAD ROUTE
 @app.route("/file/<file_id>")
-def get_file(file_id):
-    data = FILES.get(file_id)
+def download(file_id):
+    if file_id not in FILES:
+        return "❌ File not found"
 
-    if not data:
-        return "❌ File expired or not found"
+    file_id_real = FILES[file_id]
 
-    file_id_real = data["file_id"]
+    file = application.bot.get_file(file_id_real)
     path = f"{file_id}.bin"
+    file.download_to_drive(path)
 
-    try:
-        bot.download_media(file_id_real, file_name=path)
-        return send_file(path, as_attachment=True)
-    except Exception as e:
-        return f"Error: {str(e)}"
+    return send_file(path, as_attachment=True)
 
-# 🌐 Run Flask
-def run_flask():
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
+# 🌐 WEBHOOK ROUTE
+@app.route("/", methods=["POST"])
+async def webhook():
+    data = request.get_json(force=True)
+    update = Update.de_json(data, application.bot)
+    await application.process_update(update)
+    return "OK"
 
-# 🚀 Main async runner
-async def main():
-    threading.Thread(target=run_flask).start()
-    await bot.start()
-    print("Bot started successfully")
-    await idle()
+# 🚀 SET WEBHOOK
+@app.route("/setwebhook")
+def set_webhook():
+    url = f"{BASE_URL}/"
+    application.bot.set_webhook(url)
+    return "Webhook set"
 
-# 🔥 Start app
+# 🚀 RUN APP
 if __name__ == "__main__":
-    asyncio.run(main())
+    app.run(host="0.0.0.0", port=8080)
