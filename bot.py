@@ -1,33 +1,33 @@
 import os
 import time
+import asyncio
 from flask import Flask, send_file, request
 from telegram import Update
-from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, filters, ContextTypes
+from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, filters
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
 app = Flask(__name__)
 FILES = {}
 
-# 🌐 Your Railway URL
 BASE_URL = "https://telegram-bot-production-31b5.up.railway.app"
 
-# 🚀 Telegram app
+# Create application
 application = ApplicationBuilder().token(BOT_TOKEN).build()
 
-# ✅ START COMMAND
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# START command
+async def start(update, context):
     await update.message.reply_text("✅ Bot is working! Send me a file.")
 
-# 📥 HANDLE FILE
-async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# File handler
+async def handle_file(update, context):
     file = update.message.document or update.message.video or update.message.audio
 
     if not file:
         return
 
     file_id = file.file_id
-    unique_id = str(time.time())
+    unique_id = str(int(time.time()))
 
     FILES[unique_id] = file_id
 
@@ -35,7 +35,11 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(f"📥 Download:\n{link}")
 
-# 🌐 DOWNLOAD ROUTE
+# Add handlers
+application.add_handler(CommandHandler("start", start))
+application.add_handler(MessageHandler(filters.ALL, handle_file))
+
+# Download route
 @app.route("/file/<file_id>")
 def download(file_id):
     if file_id not in FILES:
@@ -49,21 +53,25 @@ def download(file_id):
 
     return send_file(path, as_attachment=True)
 
-# 🌐 WEBHOOK ROUTE
+# Webhook route (FIXED)
 @app.route("/", methods=["POST"])
-async def webhook():
+def webhook():
     data = request.get_json(force=True)
+
     update = Update.de_json(data, application.bot)
-    await application.process_update(update)
+
+    asyncio.run(application.process_update(update))  # ✅ FIX
+
     return "OK"
 
-# 🚀 SET WEBHOOK
+# Set webhook
 @app.route("/setwebhook")
 def set_webhook():
     url = f"{BASE_URL}/"
     application.bot.set_webhook(url)
     return "Webhook set"
 
-# 🚀 RUN APP
+# Run server
 if __name__ == "__main__":
+    application.initialize()  # ✅ IMPORTANT
     app.run(host="0.0.0.0", port=8080)
