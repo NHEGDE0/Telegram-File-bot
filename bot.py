@@ -53,16 +53,20 @@ def download(file_id):
 
     return send_file(path, as_attachment=True)
 
-# Webhook route (FIXED)
 @app.route("/", methods=["POST"])
 def webhook():
-    data = request.get_json(force=True)
+    try:
+        data = request.get_json(force=True)
+        update = Update.de_json(data, application.bot)
 
-    update = Update.de_json(data, application.bot)
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(application.process_update(update))
 
-    asyncio.run(application.process_update(update))  # ✅ FIX
-
-    return "OK"
+        return "OK"
+    except Exception as e:
+        print("ERROR:", e)
+        return "ERROR"
 
 # Set webhook
 @app.route("/setwebhook")
