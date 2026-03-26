@@ -4,7 +4,7 @@ from flask import Flask, request
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
-TOKEN = os.environ.get("8506591391:AAFeZ3JqlyQx_7DJzWLjF161TCVHXM-h9TQ")  # safer than hardcoding
+TOKEN = os.environ.get("BOT_TOKEN")  # safer than hardcoding
 
 app = Flask(__name__)
 application = Application.builder().token(TOKEN).build()
